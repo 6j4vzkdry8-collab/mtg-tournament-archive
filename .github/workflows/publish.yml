@@ -1,0 +1,38 @@
+name: publish
+
+on:
+  schedule:
+    - cron: '23 4,16 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run publisher
+        env:
+          OSS_AK_ID:     ${{ secrets.OSS_AK_ID }}
+          OSS_AK_SECRET: ${{ secrets.OSS_AK_SECRET }}
+          OSS_BUCKET:    ${{ secrets.OSS_BUCKET }}
+          OSS_PREFIX:    ${{ secrets.OSS_PREFIX }}
+          OSS_ENDPOINT:  ${{ secrets.OSS_ENDPOINT }}
+          PYTHONUNBUFFERED: "1"
+        run: python -m publisher.publish
