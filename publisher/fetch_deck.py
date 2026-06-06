@@ -4,6 +4,7 @@ Two endpoints make up a complete deck record without depending on cookies:
 
     GET /widgets/deck/js?deckId={id}
         - reachable from any IP without cookies
+        - requires x-requested-with: XMLHttpRequest + referer, otherwise 422
         - body is JS: elem.innerHTML = "<HTML containing deck title + author +
           deck-representative-cards-container>";
         - has the full deck name + player + 3 representative card names
@@ -99,9 +100,18 @@ def fetch_widget(deck_id: int, session: requests.Session) -> dict:
         resp = session.get(
             url,
             timeout=DEFAULT_TIMEOUT,
-            # widget endpoint requires Accept: */* (Rails enforces strict
-            # mime matching; the session default of text/html gets a 406)
-            headers={"Accept": "*/*"},
+            headers={
+                # The widget endpoint now requires the same three headers as
+                # the component endpoint:
+                #   - X-Requested-With + Referer: otherwise 422 (mtggoldfish
+                #     tightened this ~2026-06; without them the endpoint
+                #     returns 422 with an empty body)
+                #   - Accept: */*: Rails enforces strict mime matching; the
+                #     session default of text/html gets a 406
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"https://www.mtggoldfish.com/deck/{deck_id}",
+                "Accept": "*/*",
+            },
         )
     except requests.RequestException as e:
         raise GoldfishV2Error(f"widget GET failed for deck {deck_id}: {e}") from e
