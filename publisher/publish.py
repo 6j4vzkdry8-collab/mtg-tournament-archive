@@ -2,7 +2,7 @@
 
 End-to-end flow per run:
 
-    listing (5 formats)
+    listing (per format)
         |
         v
     tournament details + deck id list  ->  tournaments/<id>.json (overwrite)
@@ -56,7 +56,7 @@ from publisher.fetch_listing import (
     get_tournaments,
 )
 
-DEFAULT_FORMATS = ["standard", "modern", "legacy", "pioneer", "pauper"]
+DEFAULT_FORMATS = ["standard", "modern", "legacy", "pioneer", "pauper", "vintage", "premodern"]
 
 # Realistic browser UA. The mtggoldfish CDN happily 200s this; a default
 # python-requests UA gets weird treatment.
