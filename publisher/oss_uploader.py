@@ -7,7 +7,11 @@ Design notes:
         OSS_AK_ID / OSS_AK_SECRET / OSS_BUCKET / OSS_PREFIX / OSS_ENDPOINT
      In CI these are wired through Secrets and the runtime log masks them.
   3. object_exists(key) is exposed for HEAD-based dedup in publish.py.
-  4. update_latest_pointer uses the two-step atomic pattern: write the new
+  4. get_json(key) returns None when the object is missing (scryfall publisher
+     uses this to skip unchanged bulk ids).
+  5. put_file() is oss2.resumable_upload with the same private ACL; used for
+     the ~375MB Scryfall jsonl.gz. put_object would hold the whole body.
+  6. update_latest_pointer uses the two-step atomic pattern: write the new
      manifest first, then overwrite latest.json. Consumers always look at
      latest.json, so the moment they see a new latest.json the manifest it
      points at is already fully written. OSS single-object PUT is itself
@@ -89,6 +93,39 @@ class OssUploader:
         headers = dict(PRIVATE_HEADERS)
         headers["Content-Type"] = "application/json; charset=utf-8"
         self._bucket.put_object(key, body, headers=headers)
+
+    def get_json(self, key: str) -> Optional[dict | list]:
+        """GET + json.loads. Missing object returns None (not an error)."""
+        try:
+            obj = self._bucket.get_object(key)
+        except oss2.exceptions.NoSuchKey:
+            return None
+        except oss2.exceptions.NotFound:
+            return None
+        return json.loads(obj.read().decode("utf-8"))
+
+    def put_file(
+        self,
+        key: str,
+        local_path: str,
+        content_type: str = "application/gzip",
+    ) -> None:
+        """Multipart upload a local file. Used for Scryfall bulk jsonl.gz (~375MB).
+
+        oss2.put_object would load the whole body; resumable_upload splits
+        into parts so a blip mid-transfer can resume. ACL is forced private
+        the same way as put_json.
+        """
+        headers = dict(PRIVATE_HEADERS)
+        headers["Content-Type"] = content_type
+        oss2.resumable_upload(
+            self._bucket,
+            key,
+            local_path,
+            headers=headers,
+            multipart_threshold=100 * 1024,
+            num_threads=4,
+        )
 
     # ------------------------------------------------------------------
     # Atomic latest pointer update: caller must PUT the manifest first.
