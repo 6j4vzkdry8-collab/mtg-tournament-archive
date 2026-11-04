@@ -1,8 +1,10 @@
 name: publish
 
 on:
-  schedule:
-    - cron: '23 */3 * * *'
+  # Schedule disabled on 2026-11-03: the upstream site now returns a Cloudflare
+  # challenge (403) to GitHub Actions runners. Manual dispatch still works.
+  # schedule:
+  #   - cron: '23 */3 * * *'
   workflow_dispatch:
 
 concurrency:

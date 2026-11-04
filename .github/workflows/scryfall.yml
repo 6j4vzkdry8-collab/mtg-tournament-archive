@@ -1,0 +1,39 @@
+name: scryfall
+
+on:
+  schedule:
+    # Scryfall refreshes its bulk data around 09:00 UTC; run shortly after.
+    - cron: '15 10 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: scryfall
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scryfall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Mirror Scryfall bulk to OSS
+        env:
+          OSS_AK_ID:     ${{ secrets.OSS_AK_ID }}
+          OSS_AK_SECRET: ${{ secrets.OSS_AK_SECRET }}
+          OSS_BUCKET:    ${{ secrets.OSS_BUCKET }}
+          OSS_ENDPOINT:  ${{ secrets.OSS_ENDPOINT }}
+          OSS_PREFIX:    scryfall
+          PYTHONUNBUFFERED: "1"
+        run: python -m publisher.scryfall_publish
