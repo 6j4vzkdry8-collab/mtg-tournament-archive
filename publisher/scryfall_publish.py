@@ -2,10 +2,10 @@
 
 End-to-end per run:
 
-    GET /bulk-data  ->  compare each type's `id` with scryfall/latest.json
+    GET /bulk-data  ->  compare each type's `updated_at` with scryfall/latest.json
         |
         v
-    download jsonl.gz for types whose id changed  ->  overwrite fixed keys
+    download jsonl.gz for types whose updated_at changed  ->  overwrite fixed keys
         |
         v
     GET /sets  ->  scryfall/sets.json  (when all_cards changed)
@@ -98,6 +98,15 @@ def _meta_from_bulk(item: dict) -> dict:
     }
 
 
+def _same_bulk(prev: dict, meta: dict) -> bool:
+    """True when the OSS copy already holds this exact Scryfall refresh."""
+    return bool(
+        prev.get("updated_at")
+        and prev.get("updated_at") == meta["updated_at"]
+        and prev.get("id") == meta["id"]
+    )
+
+
 def _download_gz(session: requests.Session, url: str, dest: str, label: str) -> None:
     """Stream a jsonl.gz to disk. Do not send Accept: application/json."""
     _log(f"downloading {label} -> {dest}")
@@ -160,14 +169,21 @@ def run(dry_run: bool = False) -> int:
             item = by_type[typ]
             meta = _meta_from_bulk(item)
             new_latest[typ] = meta
-            prev_id = (existing.get(typ) or {}).get("id")
-            if prev_id and prev_id == meta["id"]:
-                _log(f"{typ}: id={meta['id']} unchanged, skip")
+            prev = existing.get(typ) or {}
+            if not isinstance(prev, dict):
+                prev = {}
+            # A bulk type's `id` is a fixed UUID that never changes between
+            # Scryfall refreshes; only `updated_at` (and the download URI) do.
+            # Comparing `id` alone skipped every run after the first one.
+            if _same_bulk(prev, meta):
+                _log(f"{typ}: updated_at={meta['updated_at']} unchanged, skip")
                 continue
-            if prev_id:
-                _log(f"{typ}: id {prev_id} -> {meta['id']}, downloading")
+            if prev.get("updated_at"):
+                _log(
+                    f"{typ}: updated_at {prev['updated_at']} -> {meta['updated_at']}, downloading"
+                )
             else:
-                _log(f"{typ}: no previous id, downloading")
+                _log(f"{typ}: no previous updated_at, downloading")
 
             local = os.path.join(tmp, oss_name)
             _download_gz(session, item["jsonl_download_uri"], local, typ)
@@ -189,7 +205,7 @@ def run(dry_run: bool = False) -> int:
                 uploader.put_json(uploader.key_for("sets.json"), sets_payload)
             uploaded_any = True
         else:
-            _log("sets.json unchanged (all_cards id match)")
+            _log("sets.json unchanged (all_cards updated_at match)")
 
     if uploader is not None and uploaded_any:
         # Pointer last: Karn reading latest.json can assume the gz is already there.
